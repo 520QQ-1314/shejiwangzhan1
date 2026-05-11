@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DesignHub · 设计灵感聚合器 v1.1</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>" />
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
+  .masonry{column-gap:16px;column-count:2}
+  @media(min-width:640px){.masonry{column-count:3}}
+  @media(min-width:1024px){.masonry{column-count:4}}
+  @media(min-width:1280px){.masonry{column-count:5}}
+  @media(min-width:1536px){.masonry{column-count:6}}
+  .pin{break-inside:avoid;margin-bottom:16px;border-radius:16px;overflow:hidden;background:#f3f3f3;position:relative;transition:transform .2s,box-shadow .2s;cursor:pointer}
+  .pin:hover{transform:translateY(-2px);box-shadow:0 12px 32px rgba(0,0,0,.15)}
+  .pin img{width:100%;display:block;background:#f3f3f3}
+  .pin .overlay{position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.7),transparent 50%);opacity:0;transition:opacity .2s;display:flex;flex-direction:column;justify-content:space-between;padding:12px}
+  .pin:hover .overlay{opacity:1}
+  .source-badge{font-size:10px;font-weight:700;padding:3px 8px;border-radius:99px;text-transform:uppercase;letter-spacing:.5px;align-self:flex-start;backdrop-filter:blur(4px)}
+  .src-pinterest{background:#e60023;color:#fff}
+  .src-behance{background:#1769ff;color:#fff}
+  .src-dribbble{background:#ea4c89;color:#fff}
+  .src-unsplash{background:#111;color:#fff}
+  .src-pexels{background:#05a081;color:#fff}
+  .src-pixabay{background:#2ec66c;color:#fff}
+  .src-zcool{background:#cc2929;color:#fff}
+  .src-uicn{background:#0099ff;color:#fff}
+  .src-huaban{background:#c4000a;color:#fff}
+  .pin-title{color:#fff;font-size:12px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .search-bar{background:#f1f1f1;transition:all .2s}
+  .search-bar:focus-within{background:#fff;box-shadow:0 0 0 2px #e60023}
+  .spinner{width:40px;height:40px;border:3px solid #f3f3f3;border-top-color:#e60023;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(8px)}
+  ::-webkit-scrollbar{width:8px;height:8px}
+  ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}
+  ::-webkit-scrollbar-thumb:hover{background:#94a3b8}
+  .tag-chip{display:inline-block;padding:4px 10px;margin:2px;background:#f3f4f6;border-radius:99px;font-size:11px;color:#374151;cursor:pointer;border:none}
+  .tag-chip:hover{background:#e5e7eb}
+  .filter-chip{padding:4px 12px;border-radius:99px;font-size:12px;color:#374151;background:#f3f4f6;white-space:nowrap;flex-shrink:0;border:none;cursor:pointer}
+  .filter-chip.active{background:#111;color:#fff}
+  .progress-bar{height:8px;background:#f3f4f6;border-radius:99px;overflow:hidden}
+  .progress-fill{height:100%;background:linear-gradient(90deg,#e60023,#ff6b6b);transition:width .3s;border-radius:99px}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#111;color:#fff;padding:12px 24px;border-radius:99px;z-index:200;font-size:14px;box-shadow:0 10px 25px rgba(0,0,0,.3);animation:toastIn .3s}
+  @keyframes toastIn{from{transform:translate(-50%,20px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
+</style>
+</head>
+<body class="bg-neutral-50 text-neutral-800">
+
+<nav class="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-neutral-200">
+  <div class="max-w-screen-2xl mx-auto px-4 h-16 flex items-center gap-3">
+    <a href="#" onclick="goHome();return false;" class="flex items-center gap-2 text-2xl font-extrabold text-rose-600">
+      <span>🎨</span><span class="hidden sm:inline">DesignHub</span>
+    </a>
+    <div class="flex-1 max-w-2xl mx-auto search-bar rounded-full px-5 py-2.5 flex items-center gap-2">
+      <svg class="w-5 h-5 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+      <input id="q" class="flex-1 bg-transparent outline-none text-sm" placeholder="搜索灵感、风格、配色..." />
+    </div>
+    <div class="flex items-center gap-1">
+      <button onclick="loadRecommend()" class="px-3 py-1.5 rounded-full bg-rose-600 text-white text-sm font-medium hover:bg-rose-700 hidden sm:flex items-center gap-1">✨ AI推荐</button>
+      <button onclick="showFavorites()" title="收藏夹" class="w-9 h-9 flex items-center justify-center rounded-full hover:bg-neutral-100">❤️</button>
+      <button onclick="showSettings()" title="设置" class="w-9 h-9 flex items-center justify-center rounded-full hover:bg-neutral-100">⚙️</button>
+    </div>
+  </div>
+  <div id="filters" class="border-t border-neutral-200 px-4 py-2 hidden">
+    <div class="max-w-screen-2xl mx-auto flex items-center gap-2 overflow-x-auto">
+      <span class="text-xs text-neutral-500 shrink-0">来源：</span>
+      <button class="filter-chip active" data-src="all">全部</button>
+      <button class="filter-chip" data-src="pinterest">Pinterest</button>
+      <button class="filter-chip" data-src="behance">Behance</button>
+      <button class="filter-chip" data-src="dribbble">Dribbble</button>
+      <button class="filter-chip" data-src="unsplash">Unsplash</button>
+      <button class="filter-chip" data-src="pexels">Pexels</button>
+      <button class="filter-chip" data-src="pixabay">Pixabay</button>
+      <button class="filter-chip" data-src="zcool">站酷</button>
+      <button class="filter-chip" data-src="uicn">UI中国</button>
+      <button class="filter-chip" data-src="huaban">花瓣</button>
+    </div>
+  </div>
+  <div id="favToolbar" class="hidden border-t border-neutral-200 px-4 py-2 bg-rose-50">
+    <div class="max-w-screen-2xl mx-auto flex items-center justify-between gap-3">
+      <span class="text-sm text-rose-700 font-medium"><span id="favCount">0</span> 个收藏</span>
+      <button onclick="downloadAllFavorites()" id="downloadBtn" class="px-4 py-1.5 rounded-full bg-rose-600 text-white text-sm font-medium hover:bg-rose-700 flex items-center gap-1">
+        <span>⬇</span><span>打包下载 ZIP</span>
+      </button>
+    </div>
+  </div>
+</nav>
+
+<main class="max-w-screen-2xl mx-auto px-4 py-6">
+  <div id="loading" class="hidden text-center py-16">
+    <div class="spinner"></div>
+    <p class="mt-4 text-sm text-neutral-500">正在搜索灵感...</p>
+  </div>
+  <div id="status" class="hidden text-center py-3 text-sm text-neutral-500"></div>
+  <div id="grid" class="masonry"></div>
+  <div id="empty" class="text-center py-24">
+    <div class="text-6xl mb-4">🎨</div>
+    <h2 class="text-2xl font-bold mb-2">欢迎使用 DesignHub v1.1</h2>
+    <p class="text-neutral-500 mb-2">国内外 9 个设计源一站搜索</p>
+    <p class="text-xs text-neutral-400 mb-6">Pinterest · Behance · Dribbble · Unsplash · Pexels · Pixabay · 站酷 · UI中国 · 花瓣</p>
+    <div class="max-w-md mx-auto flex flex-wrap justify-center gap-2">
+      <button class="tag-chip" onclick="quickSearch('minimalist branding')">极简品牌</button>
+      <button class="tag-chip" onclick="quickSearch('UI design')">UI设计</button>
+      <button class="tag-chip" onclick="quickSearch('illustration')">插画</button>
+      <button class="tag-chip" onclick="quickSearch('typography poster')">字体海报</button>
+      <button class="tag-chip" onclick="quickSearch('3d render product')">3D产品</button>
+      <button class="tag-chip" onclick="quickSearch('packaging design')">包装设计</button>
+      <button class="tag-chip" onclick="quickSearch('国潮 海报')">国潮海报</button>
+      <button class="tag-chip" onclick="quickSearch('品牌设计')">品牌设计</button>
+    </div>
+  </div>
+</main>
+
+<!-- 详情模态 -->
+<div id="detailModal" class="modal-backdrop hidden" onclick="closeDetail(event)">
+  <div class="bg-white rounded-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col md:flex-row" onclick="event.stopPropagation()">
+    <div class="md:w-2/3 bg-neutral-100 flex items-center justify-center overflow-auto">
+      <img id="detailImg" class="max-w-full max-h-[90vh] object-contain" referrerpolicy="no-referrer" />
+    </div>
+    <div class="md:w-1/3 p-6 overflow-y-auto">
+      <div class="flex items-center justify-between mb-4">
+        <span id="detailSource" class="source-badge"></span>
+        <button onclick="closeDetail()" class="text-neutral-400 hover:text-neutral-700 text-xl">✕</button>
+      </div>
+      <h3 id="detailTitle" class="text-lg font-bold mb-2"></h3>
+      <p id="detailDesc" class="text-sm text-neutral-600 mb-4"></p>
+      <div id="detailAuthor" class="text-sm text-neutral-500 mb-4"></div>
+      <div id="detailTags" class="mb-4"></div>
+      <div class="flex gap-2 mb-2">
+        <button id="favBtn" onclick="toggleFav()" class="flex-1 py-2 rounded-full bg-rose-600 text-white text-sm font-medium hover:bg-rose-700">❤️ 收藏</button>
+        <a id="origLink" target="_blank" class="flex-1 py-2 rounded-full bg-neutral-100 text-center text-sm font-medium hover:bg-neutral-200">🔗 原图</a>
+      </div>
+      <button onclick="downloadImage()" class="w-full py-2 rounded-full border border-neutral-300 text-sm font-medium hover:bg-neutral-50">⬇️ 下载</button>
+    </div>
+  </div>
+</div>
+
+<!-- 设置模态 -->
+<div id="settingsModal" class="modal-backdrop hidden" onclick="closeSettings(event)">
+  <div class="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
+    <div class="p-6">
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-xl font-bold">⚙️ 设置</h2>
+        <button onclick="closeSettings()" class="text-neutral-400 hover:text-neutral-700 text-xl">✕</button>
+      </div>
+      <div class="space-y-6">
+        <div>
+          <h3 class="font-semibold mb-2">🌐 Cloudflare Worker</h3>
+          <p class="text-xs text-neutral-500 mb-2">未配置时 Pinterest/Behance/Dribbble 不可用</p>
+          <input id="cfgWorker" class="w-full px-3 py-2 border rounded-lg text-sm" placeholder="https://xxx.workers.dev" />
+          <label class="flex items-center gap-2 mt-2 text-sm">
+            <input id="cfgUseProxy" type="checkbox" /> 启用代理
+          </label>
+        </div>
+        <div>
+          <h3 class="font-semibold mb-2">🔑 API Keys（可选）</h3>
+          <div class="space-y-2">
+            <input id="cfgUnsplash" class="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Unsplash Access Key" />
+            <input id="cfgPexels" class="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Pexels API Key" />
+            <input id="cfgPixabay" class="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Pixabay API Key" />
+          </div>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="saveSettings()" class="flex-1 py-2 rounded-lg bg-rose-600 text-white font-medium hover:bg-rose-700">保存</button>
+          <button onclick="closeSettings()" class="px-4 py-2 rounded-lg border hover:bg-neutral-50">取消</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 打包下载进度模态 -->
+<div id="downloadModal" class="modal-backdrop hidden">
+  <div class="bg-white rounded-2xl max-w-md w-full p-8">
+    <div class="text-center">
+      <div class="text-5xl mb-4">📦</div>
+      <h2 class="text-xl font-bold mb-2">正在打包收藏夹</h2>
+      <p id="dlStatus" class="text-sm text-neutral-500 mb-6">准备中...</p>
+      <div class="progress-bar mb-2">
+        <div id="dlFill" class="progress-fill" style="width:0%"></div>
+      </div>
+      <p id="dlText" class="text-xs text-neutral-400">0 / 0</p>
+      <p id="dlHint" class="text-xs text-neutral-400 mt-4 hidden">⚠️ 部分图片可能因防盗链下载失败，会自动跳过</p>
+    </div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
