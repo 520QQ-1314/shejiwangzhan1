@@ -1,0 +1,12 @@
+        # 项目模块
+        "--hidden-import=scrapers.pinterest",
+        "--hidden-import=scrapers.behance",
+        "--hidden-import=scrapers.dribbble",
+        "--hidden-import=scrapers.zcool",
+        "--hidden-import=scrapers.uicn",
+        "--hidden-import=scrapers.unsplash",
+        "--hidden-import=scrapers.pexels",
+        "--hidden-import=scrapers.pixabay",
+        "--hidden-import=ai.tagger",
+        "--hidden-import=ai.recommender",
+        "--hidden-import=db.cache",
