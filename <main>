@@ -1,0 +1,9 @@
+<div id="favToolbar" class="fav-toolbar hidden">
+  <span class="text-sm text-neutral-600 font-medium">❤️ 我的收藏</span>
+  <span id="favCount" class="text-xs text-neutral-500"></span>
+  <div class="flex-1"></div>
+  <button onclick="toggleSelectMode()" id="selectBtn">✓ 多选</button>
+  <button onclick="selectAll()" id="selectAllBtn" class="hidden">全选</button>
+  <button onclick="downloadSelected()" id="downloadSelectedBtn" class="hidden primary" disabled>下载选中 (0)</button>
+  <button onclick="downloadAllFavorites()" class="primary">⬇ 全部打包下载</button>
+</div>
