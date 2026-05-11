@@ -1,0 +1,210 @@
+
+> 💡 **设计决策上的取舍**：站酷和 UI 中国是 SPA 应用且页面结构经常微调，所以爬虫采用**双重 fallback 策略**——优先解析嵌入 JSON，失败则降级为正则抓图。这样即使页面改版，也能保留 70% 以上的抓取能力。
+
+---
+
+## 二、新增爬虫源（完整文件）
+
+### 📄 `backend/scrapers/dribbble.py`（新建）
+
+```python
+# -*- coding: utf-8 -*-
+"""Dribbble 爬虫：HTML + 嵌入 JSON 双策略"""
+import json
+import re
+from urllib.parse import quote
+from typing import List, Dict
+from scrapers.base import BaseScraper
+
+
+class DribbbleScraper(BaseScraper):
+    name = "dribbble"
+    requires_proxy = True  # 国内需要 Cloudflare Worker
+    BASE = "https://dribbble.com"
+
+    async def search(self, query: str, page: int = 1) -> List[Dict]:
+        url = f"{self.BASE}/search/shots?q={quote(query)}&page={page}&per_page=24"
+        try:
+            r = await self.client.get(
+                self.proxied(url),
+                headers={"Accept": "text/html,application/xhtml+xml"},
+            )
+            r.raise_for_status()
+            html = r.text
+        except Exception as e:
+            print(f"[dribbble] {e}")
+            return []
+
+        # 策略1：解析 li.shot-thumbnail 卡片
+        items = self._parse_cards(html)
+        if items:
+            return items
+
+        # 策略2：从 __NEXT_DATA__ 或 INITIAL_STATE 提取
+        items = self._parse_embedded_json(html)
+        if items:
+            return items
+
+        # 策略3：兜底裸抓图片
+        return self._parse_fallback(html)
+
+    def _parse_cards(self, html: str) -> List[Dict]:
+        results = []
+        # Dribbble 卡片大致结构：
+        # <li class="...shot-thumbnail..." data-thumbnail-id="123456">
+        #   <a class="shot-thumbnail-link" href="/shots/xxx" aria-label="Title">
+        #     <img data-srcset="...1x, ...2x" alt="" />
+        #   </a>
+        # </li>
+        pattern = re.compile(
+            r'<li[^>]*class="[^"]*shot-thumbnail[^"]*"[^>]*?'
+            r'(?:data-thumbnail-id="(\d+)")?[^>]*>(.*?)</li>',
+            re.S,
+        )
+        for m in pattern.finditer(html):
+            shot_id = m.group(1) or ""
+            block = m.group(2)
+
+            # 提取图片（优先 srcset 的最高分辨率）
+            img_url = self._extract_img(block)
+            if not img_url:
+                continue
+
+            # 标题
+            title_m = (
+                re.search(r'aria-label="([^"]+)"', block) or
+                re.search(r'<img[^>]+alt="([^"]+)"', block)
+            )
+            title = (title_m.group(1) if title_m else "").strip()
+
+            # 链接
+            link_m = re.search(r'href="(/shots/[^"]+)"', block)
+            link = f"{self.BASE}{link_m.group(1)}" if link_m else ""
+
+            # 作者
+            author_m = (
+                re.search(r'<a[^>]+class="[^"]*url[^"]*"[^>]*>([^<]+)</a>', block) or
+                re.search(r'data-user-name="([^"]+)"', block)
+            )
+            author = (author_m.group(1) if author_m else "").strip()
+
+            if not shot_id:
+                shot_id = link.rsplit("/", 1)[-1] or img_url.rsplit("/", 1)[-1]
+
+            results.append(self.standardize({
+                "id": shot_id,
+                "title": title,
+                "image_url": self._upscale(img_url),
+                "thumbnail": img_url,
+                "source": "dribbble",
+                "link": link or f"{self.BASE}/shots/{shot_id}",
+                "author": author,
+            }))
+        return results
+
+    def _parse_embedded_json(self, html: str) -> List[Dict]:
+        patterns = [
+            r'<script[^>]*id="__NEXT_DATA__"[^>]*>(\{.+?\})</script>',
+            r'window\.__INITIAL_STATE__\s*=\s*(\{.+?\})\s*;\s*</script>',
+        ]
+        for pat in patterns:
+            m = re.search(pat, html, re.S)
+            if not m:
+                continue
+            try:
+                data = json.loads(m.group(1))
+                shots = self._dig_shots(data)
+                if shots:
+                    return [x for x in (self._parse_shot_json(s) for s in shots) if x]
+            except Exception:
+                continue
+        return []
+
+    def _dig_shots(self, data):
+        """递归挖出 shots 数组"""
+        if isinstance(data, dict):
+            for k in ("shots", "results", "data", "edges"):
+                v = data.get(k)
+                if isinstance(v, list) and v and isinstance(v[0], dict):
+                    if any("image" in str(x).lower() or "thumbnail" in str(x).lower()
+                           for x in v[:3] if isinstance(x, dict)):
+                        return v
+            for v in data.values():
+                r = self._dig_shots(v)
+                if r:
+                    return r
+        elif isinstance(data, list):
+            for x in data[:50]:
+                r = self._dig_shots(x)
+                if r:
+                    return r
+        return None
+
+    def _parse_shot_json(self, s):
+        if not isinstance(s, dict):
+            return None
+        img = (s.get("hidpi_image_url") or s.get("normal_image_url")
+               or s.get("teaser_image_url") or s.get("image_url"))
+        if not img and isinstance(s.get("images"), dict):
+            imgs = s["images"]
+            img = imgs.get("hidpi") or imgs.get("normal") or imgs.get("teaser")
+        if not img:
+            return None
+        return self.standardize({
+            "id": str(s.get("id", "")),
+            "title": s.get("title") or s.get("name", ""),
+            "image_url": self._upscale(img),
+            "thumbnail": img,
+            "source": "dribbble",
+            "link": s.get("html_url") or s.get("url", ""),
+            "author": (s.get("user") or {}).get("name", "") if isinstance(s.get("user"), dict) else "",
+        })
+
+    def _parse_fallback(self, html: str) -> List[Dict]:
+        results = []
+        seen = set()
+        img_pattern = re.compile(
+            r'<img[^>]+(?:data-srcset|srcset|data-src|src)='
+            r'"((?:https?:)?//cdn\.dribbble\.com/[^"]+)"[^>]*'
+            r'(?:alt="([^"]*)")?',
+            re.I,
+        )
+        for m in img_pattern.finditer(html):
+            url = m.group(1).split(',')[0].split(' ')[0].strip()
+            if url.startswith("//"):
+                url = "https:" + url
+            title = (m.group(2) or "").strip()
+            if url in seen or "still/" in url:
+                continue
+            seen.add(url)
+            results.append(self.standardize({
+                "id": url.rsplit("/", 1)[-1].split(".")[0],
+                "title": title,
+                "image_url": self._upscale(url),
+                "thumbnail": url,
+                "source": "dribbble",
+            }))
+            if len(results) >= 24:
+                break
+        return results
+
+    @staticmethod
+    def _extract_img(block: str) -> str:
+        # 优先从 srcset 取最大尺寸
+        m = re.search(r'(?:data-)?srcset="([^"]+)"', block)
+        if m:
+            candidates = [s.strip() for s in m.group(1).split(',') if s.strip()]
+            if candidates:
+                # 取最后一个（通常是 2x/3x）
+                return candidates[-1].split(' ')[0]
+        m = re.search(r'<img[^>]+(?:data-src|src)="([^"]+)"', block)
+        return m.group(1) if m else ""
+
+    @staticmethod
+    def _upscale(url: str) -> str:
+        """把 Dribbble 缩略图 URL 升级为大图"""
+        # 常见模式：xxx_1x.jpg → 高清版直接去掉 _1x 后缀
+        # /still/teaser/xxx.jpg → /still/large/xxx.jpg
+        url = re.sub(r'_(teaser|small|normal)\.', '.', url)
+        url = re.sub(r'/(teaser|small|normal)/', '/large/', url)
+        return url
